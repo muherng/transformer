@@ -53,14 +53,6 @@ class TokenDataset(Dataset):
             torch.tensor(self.data[index+1:index+self.sequence_length+1], dtype=torch.long),
         )
 
-#generate synthetic data
-data = [1,1]
-for i in range(2,1000):
-    data.append((data[i-1] + data[i-2])%5000)
-# Example usage:
-dataset = TokenDataset(data=data, sequence_length=100)
-dataloader = DataLoader(dataset, batch_size=32, shuffle=True)
-
 def train(model, dataloader, epochs=10):
     model.train()
     optimizer = optim.Adam(model.parameters())
@@ -77,6 +69,7 @@ def train(model, dataloader, epochs=10):
             loss.backward()
             optimizer.step()
             total_loss += loss.item()
+        print(f"Epoch {epoch+1}, Loss: {total_loss / len(dataloader)}")
         if epoch%10 == 0: 
             print(f"Epoch {epoch+1}, Loss: {total_loss / len(dataloader)}")
             print('input: ', src[0,:])
@@ -84,8 +77,27 @@ def train(model, dataloader, epochs=10):
             val,indices = torch.max(output,2)
             print('output: ', indices[0,:])
 #parameters
-vocab_size = 5000
+vocab_size = 5001
 epochs=1000
+
+
+#generate synthetic data
+data_s = [1,1]
+for i in range(2,1000):
+    data_s.append((data_s[i-1] + data_s[i-2])%5000)
+    
+#print('data short: ', data_short)
+
+#adding extra token
+data = []
+for i in range(int(len(data_s)/100)):
+    data = data + data_s[100*i:100*i+100] + [5000] 
+    
+print('data: ', data)
+# Example usage:
+dataset = TokenDataset(data=data, sequence_length=100)
+dataloader = DataLoader(dataset, batch_size=32, shuffle=True)
+
 model = TransformerDecoderModel(vocab_size).to(device)
 train(model,dataloader,epochs=epochs)
 
