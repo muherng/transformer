@@ -1,4 +1,3 @@
-
 import numpy as np
 import math
 from random import randrange, choice
@@ -54,7 +53,8 @@ class Dataset:
 
     def to_digits(self, numbers, length=None):
         if length is None:
-            length = self.number_length
+            #length = self.number_length
+            length = max([len(str(num)) for num in numbers]) 
 
         # Convert numbers to digits
         tensor = np.tile(np.expand_dims(numbers, 1), (1, length))
@@ -136,36 +136,128 @@ class Dataset:
         assert False, "Not implemented"
 
 
-class AddModDataset(Dataset):
-    def __init__(self, base, number_length, pre_end_padding=0, flip=False, **kwargs):
+class PemdasDataset(Dataset):
+    def __init__(
+        self,
+        base,
+        number_length,
+        num_args,
+        out_length,
+        pre_end_padding=0,
+        min_b=0,
+        flip=False,
+        **kwargs,
+    ):
         super().__init__(base, number_length, pre_end_padding, flip, **kwargs)
-        self.separator_token2 = self.n_tokens
-        self.n_tokens += 1
-        self.dic[self.separator_token] = "+"
-        self.dic[self.separator_token2] = "%"
+
+        #self.sep_string = sep
+        self.out_length = out_length
+        #self.dic[self.separator_token] = sep
+        self.dic[base+4] = '+'
+        self.dic[base+5] = '*'
+        self.min_b = min_b
+
+        self.start_token = base  # Before input
+        self.end_token = base + 1  # After input
+        #self.separator_token = base + 2
+        self.padding_token = base + 2  # Before input and after target
+        self.eos_token = base + 3  # After target
+
+        self.add_token = base + 4  # between inputs add token
+        self.mult_token = base + 5
+        self.n_tokens = base + 6
+        
+        self.num_args = num_args
 
     def _generate_batch(self, bs):
-        a, b = self.make_numbers((2, bs))
-        c = self.make_numbers((bs,), (self.number_length + 1) // 2)
-        out = (a + b) % np.clip(c, 1, None)
-        return np.concatenate(
-            [
-                np.full((bs, 1), self.start_token),
-                self.to_digits(a),
-                np.full((bs, 1), self.separator_token),
-                self.to_digits(b),
-                np.full((bs, 1), self.separator_token2),
-                self.to_digits(c),
-                np.full((bs, 1), self.end_token),
-                self.to_digits(out),
-                np.full((bs, 1), self.eos_token),
-            ],
-            axis=1,
-        )
+        if self.num_args%2 == 1:
+            raise ValueError("num_args must be even")
+        #TODO: change this to what is needed for 
+        num_list = self.make_numbers((self.num_args, bs))
+        print('num_list: ', num_list)
+        print('num_list: ', np.shape(num_list))
+        
+        #TODO: change separator token 
+        data = np.full((bs,1), self.start_token)
+        
+        #setup data left of equal sign 
+        #append digit then + for all but the last digit
+        if self.num_args < 4: 
+            raise ValueError('At least four digits required for pemdas')
+        
+        for digit in range(0,self.num_args-1,2):
+            data = np.concatenate(
+                [
+                    data,
+                    self.to_digits(num_list[digit,:]),
+                    np.full((bs,1),self.mult_token),
+                    self.to_digits(num_list[digit+1,:]),
+                ],
+                axis=1,
+            )
+            
+            if digit < self.num_args - 2:
+                data = np.concatenate(
+                    [
+                        data,
+                        np.full((bs,1),self.add_token)
+                    ],
+                    axis=1
+                )
+                
+        #add last digit with = token
+        data = np.concatenate(
+                [
+                    data,
+                    np.full((bs, 1), self.end_token)
+                ],
+                axis=1,
+            )
+
+        #add output sum of first two digits
+        if self.num_args >= 4:
+            for digit in range(1,self.num_args):
+                if digit == 1: 
+                    data = np.concatenate(
+                        [
+                            data,
+                            self.to_digits(num_list[0,:]*num_list[1,:])
+                        ],
+                        axis=1,
+                    )
+                else: 
+                    data = np.concatenate(
+                        [
+                            data,
+                            self.to_digits(num_list[digit,:])
+                        ],
+                        axis=1,
+                    )
+                    
+                if digit < self.num_args-1:
+                    data = np.concatenate(
+                        [
+                            data,
+                            np.full((bs, 1), self.add_token)
+                        ],
+                        axis=1,
+                    )
+                
+            data = np.concatenate(
+                [
+                    data,
+                    np.full((bs, 1), self.eos_token)
+                ],
+                axis=1,
+            )
+            
+        
+        np.random.shuffle(data)
+        return data
 
     @property
     def seq(self):
-        return self.number_length * 4 + 5
+        return self.number_length * 2 + self.out_length + 4
     
 class RecursiveAddDataset(Dataset):
     def __init__(
@@ -235,49 +327,42 @@ class RecursiveAddDataset(Dataset):
                 ],
                 axis=1,
             )
-        #add output sum of first two digits 
-        
-        
-        if self.num_args == 3: 
-            #consider adding self.out_length to to_digits
+        #add output sum of first two digits
+        if self.num_args >= 3:
+            for digit in range(1,self.num_args):
+                if digit == 1: 
+                    data = np.concatenate(
+                        [
+                            data,
+                            self.to_digits(num_list[0,:] + num_list[1,:])
+                        ],
+                        axis=1,
+                    )
+                else: 
+                    data = np.concatenate(
+                        [
+                            data,
+                            self.to_digits(num_list[digit,:])
+                        ],
+                        axis=1,
+                    )
+                    
+                if digit < self.num_args-1:
+                    data = np.concatenate(
+                        [
+                            data,
+                            np.full((bs, 1), self.add_token)
+                        ],
+                        axis=1,
+                    )
+                
             data = np.concatenate(
-                    [
-                        data,
-                        self.to_digits(num_list[0,:] + num_list[1,:]),
-                        np.full((bs, 1), self.add_token)
-                    ],
-                    axis=1,
-                )
-            data = np.concatenate(
-                    [
-                        data,
-                        self.to_digits(num_list[2,:]),
-                        np.full((bs, 1), self.eos_token)
-                    ],
-                    axis=1,
-                )
-            
-            
-        
-        if self.num_args > 3:
-            for digit in range(2,self.num_args-1):
-                #possibly transpose num_list
-                data = np.concatenate(
-                    [
-                        data,
-                        self.to_digits(num_list[0,:] + num_list[1,:], self.out_length),
-                        np.full((bs, 1), self.add_token)
-                    ],
-                    axis=1,
-                )
-                data = np.concatenate(
-                    [
-                        data,
-                        self.to_digits(num_list[self.num_args-1,:]),
-                        np.full((bs, 1), self.eos_token)
-                    ],
-                    axis=1,
-                )
+                [
+                    data,
+                    np.full((bs, 1), self.eos_token)
+                ],
+                axis=1,
+            )
             
         np.random.shuffle(data)
         return data
@@ -525,3 +610,34 @@ class FactorDataset(Dataset):
         res = self.move_padding_to_end(res)
         res = res[:, : self.seq]
         return res
+    
+class AddModDataset(Dataset):
+    def __init__(self, base, number_length, pre_end_padding=0, flip=False, **kwargs):
+        super().__init__(base, number_length, pre_end_padding, flip, **kwargs)
+        self.separator_token2 = self.n_tokens
+        self.n_tokens += 1
+        self.dic[self.separator_token] = "+"
+        self.dic[self.separator_token2] = "%"
+
+    def _generate_batch(self, bs):
+        a, b = self.make_numbers((2, bs))
+        c = self.make_numbers((bs,), (self.number_length + 1) // 2)
+        out = (a + b) % np.clip(c, 1, None)
+        return np.concatenate(
+            [
+                np.full((bs, 1), self.start_token),
+                self.to_digits(a),
+                np.full((bs, 1), self.separator_token),
+                self.to_digits(b),
+                np.full((bs, 1), self.separator_token2),
+                self.to_digits(c),
+                np.full((bs, 1), self.end_token),
+                self.to_digits(out),
+                np.full((bs, 1), self.eos_token),
+            ],
+            axis=1,
+        )
+
+    @property
+    def seq(self):
+        return self.number_length * 4 + 5
