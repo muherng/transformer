@@ -97,6 +97,7 @@ def main():
         default=4,
         help="The number of heads/rank in transformer/mlp",
     )
+    parser.add_argument("--r", type=int, default=3)
     args = parser.parse_args()
 
     dataset = make_dataset(args, number_length=args.initial_number_length)
@@ -175,6 +176,30 @@ def make_dataset(args, number_length=1):
         return my_datasets.AddMultDataset(
             min_b=1,
             out_length=2 * number_length,
+            **kvargs,
+        )
+    #TODO: out_length is defunct argument 
+    elif args.op == "add-r":
+        return my_datasets.RecursiveAddDataset(
+            min_b=1,
+            num_args = args.r,
+            out_length=args.r*(number_length + 1) + number_length,
+            **kvargs,
+        )
+    elif args.op == "pemdas":
+        args.r = 4
+        return my_datasets.PemdasDataset(
+            min_b=1,
+            num_args = args.r,
+            out_length=2*number_length + (args.r - 1)*number_length,
+            **kvargs,
+        )
+     elif args.op == "inner-product":
+        args.r = 4
+        #TODO: change out length 
+        return my_datasets.InnerProductDataset(
+            min_b=1,
+            num_args = args.r,
             **kvargs,
         )
 
@@ -296,7 +321,10 @@ def manual_training(model, dataset, args):
 
         # Print some examples. Try to always include an example where the model is wrong.
         # But if the model is nearly perfect, don't bother, since we might search forever.
-        model.print_examples(3, must_include_a_wrong=acc < args.acc_next)
+        
+        print_examples = False 
+        if print_examples: 
+            model.print_examples(3, must_include_a_wrong=acc < args.acc_next)
 
         time_to_success[dataset.number_length] += 1
 
