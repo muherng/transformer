@@ -194,13 +194,10 @@ def make_dataset(args, number_length=1):
             out_length=2*number_length + (args.r - 1)*number_length,
             **kvargs,
         )
-     elif args.op == "inner-product":
+    elif args.op == "innerprod":
         args.r = 4
-        #TODO: change out length 
         return my_datasets.InnerProductDataset(
-            min_b=1,
-            num_args = args.r,
-            **kvargs,
+            **kvargs
         )
 
 
@@ -264,9 +261,7 @@ def validation_step(model, batch):
             # If we are getting the answer wrong, they should both be wrong.
             assert not torch.all(pred0 == true)
             assert not torch.all(pred1 == true)
-
-    print('truth: ', truth[:10,:])
-    print('preds: ', preds[:10,:])
+            
     return torch.all(preds * mask == truth * mask, dim=1).float().mean()
 
 
@@ -288,21 +283,23 @@ def manual_training(model, dataset, args):
     time_to_success = Counter()
     for epoch in range(args.epochs):
         train_batches = args.train_batches
+        #train_batches = 2
         with torch.no_grad():
             np_data = dataset.generate_batch(batch_size * train_batches)
             train_data = torch.tensor(np_data).to(device)
-            print('data size: ', train_data.size())
-            print('train_batches: ', train_batches)
+            #print('data size: ', train_data.size())
+            #print('train_batches: ', train_batches)
 
         # Training Loop
         model.train()
-        for batch_idx in tqdm.tqdm(range(train_batches)):
-            batch = train_data[batch_idx * batch_size : (batch_idx + 1) * batch_size]
-            #print('batch: ', batch[:10,:])
-            optimizer.zero_grad()
-            loss = training_step(model, batch)
-            loss.backward()
-            optimizer.step()
+        for i in range(10): 
+            for batch_idx in tqdm.tqdm(range(train_batches)):
+                batch = train_data[batch_idx * batch_size : (batch_idx + 1) * batch_size]
+                #print('batch: ', batch[:10,:])
+                optimizer.zero_grad()
+                loss = training_step(model, batch)
+                loss.backward()
+                optimizer.step()
 
         # Validation Loop
         accs = []

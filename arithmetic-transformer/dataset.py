@@ -3,7 +3,7 @@ import math
 from random import randrange, choice
 import itertools
 import torch
-
+from data_constructor import innerprod_lhs, innerprod_rhs
 
 # Adding extra padding is an easy way to improve performance, as it gives the
 # model more space to think. For example, without padding, the standard model
@@ -54,6 +54,7 @@ class Dataset:
     def to_digits(self, numbers, length=None):
         if length is None:
             #length = self.number_length
+            #this line is buggy TODO: fix
             length = max([len(str(num)) for num in numbers]) 
 
         # Convert numbers to digits
@@ -135,6 +136,86 @@ class Dataset:
     def seq(self):
         assert False, "Not implemented"
 
+
+        
+class InnerProductDataset(Dataset):
+    def __init__(
+        self,
+        number_length,
+        base=10,
+        num_args=4,
+        pre_end_padding=0,
+        min_b=0,
+        flip=False,
+        **kwargs,
+    ):
+        super().__init__(base, number_length, pre_end_padding, flip, **kwargs)
+
+        #self.sep_string = sep
+        #self.out_length = out_length
+        #self.dic[self.separator_token] = sep
+        self.dic[base+4] = '+'
+        self.dic[base+5] = '*'
+        self.min_b = min_b
+
+        self.start_token = base  # Before input
+        self.end_token = base + 1  # After input
+        #self.separator_token = base + 2
+        self.padding_token = base + 2  # Before input and after target
+        self.eos_token = base + 3  # After target
+
+        self.add_token = base + 4  # between inputs add token
+        self.mult_token = base + 5
+        self.n_tokens = base + 6
+        
+        self.num_args = num_args
+
+    def _generate_batch(self, bs):
+        #set batch size so that after concatenate we have correct size of data
+        bs = int(bs/2)
+        
+        if self.num_args%2 == 1:
+            raise ValueError("num_args must be even")
+        if self.num_args < 4: 
+            raise ValueError('At least four digits required for recursive pemdas')
+        
+        print('NUM ARGS: ', self.num_args)
+        
+        #First generate list of numbers 
+        num_list = self.make_numbers((self.num_args, bs))
+        print('num_list shape: ', np.shape(num_list))
+        #generate batch function 
+        #take RHS of data and copy it to LHS
+        
+        #TODO: Insert multiplication and add datasets
+    
+        #construct lhs a*b + c*d
+        data = self.innerprod_lhs(num_list, bs)
+        #construct rhs eval(a*b) + c*d
+        data = self.innerprod_rhs(num_list,bs,data,pointer=2)
+        #construct lhs eval(a*b) + c*d copies from rhs
+        data_inter = self.innerprod_lhs(num_list,bs,data=data)
+        #construct rhs eval(a*b) + eval(c*d) 
+        data_final = self.innerprod_rhs(num_list,bs,data_inter,pointer=4)
+        #TODO: recursive sum 
+        #recursive_sum(num_list)
+        
+        #data_sum = self.sum_data(num_list,bs)
+        #data_mult = self.mult_data(num_list,bs)
+        
+        #Consider shuffling data
+        #np.random.shuffle(data)
+        print('data: ', data[:4,:])
+        print('data_final: ', data_final[:4,:])
+        data_out = np.concatenate([data,data_final],axis=0)
+        return data_out
+
+    @property
+    def seq(self):
+        return 4*self.number_length * self.num_args 
+
+InnerProductDataset.innerprod_lhs = innerprod_lhs 
+InnerProductDataset.innerprod_rhs = innerprod_rhs 
 
 class PemdasDataset(Dataset):
     def __init__(

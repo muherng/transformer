@@ -5,7 +5,7 @@ from random import randrange, choice
 import itertools
 
 #takes a string and return a list of ints 
-def str_to_int(number):
+def to_digits(number):
     return [int(num) for num in list(str(number))]
 
 def innerprod_lhs(self,num_list, bs, data=None):
@@ -15,16 +15,18 @@ def innerprod_lhs(self,num_list, bs, data=None):
         #fill with -1's in the shape of data
         data_new = np.full(np.shape(data),-1)
         data_new[:,0] = np.full(bs, self.start_token)
-        for i,row in enumerate(data):
+        for i in range(np.shape(data)[0]):
+            row = data[i,:]
             if len(np.where(row == self.end_token)) > 1:
                 raise ValueError('More than one equal sign in row')
             if len(np.where(row==self.eos_token)) > 1:
                 raise ValueError('More than one eos token in row')
             end_token = np.where(row == self.end_token)[0][0]
-            eos_token = np.where(row==self.eos_token)[0][0]
+            eos_token = np.where(row == self.eos_token)[0][0]
             #data after equals not including eos_token
-            row_rhs = row[end_token+1:eos_token]
+            row_rhs = row[end_token+1:eos_token]  
             data_new[i,1:len(row_rhs)+1] = row_rhs
+            data_new[i,len(row_rhs)+1] = self.end_token
         return data_new 
             
     #each number is followed by a symbol * or +, 
@@ -38,7 +40,7 @@ def innerprod_lhs(self,num_list, bs, data=None):
         row = [self.start_token]
         for digit in range(0,self.num_args,2):
             #print('to_digits: ', str_to_int(numbers[digit]))
-            row = row + str_to_int(numbers[digit]) + [self.mult_token] + str_to_int(numbers[digit+1])
+            row = row + to_digits(numbers[digit]) + [self.mult_token] + to_digits(numbers[digit+1])
             if digit < self.num_args - 2:
                 row = row + [self.add_token]
         row = row + [self.end_token]
@@ -51,47 +53,21 @@ def innerprod_rhs(self,num_list,bs,data,pointer=0,lhs=False):
     if pointer%2 == 1:
         raise ValueError('can only multiply first 2,4,6,8... digits')
     #add output sum of first two digits
-    for digit in range(0,pointer,2):
-        data = np.concatenate(
-                [
-                    data,
-                    self.to_digits(num_list[digit,:]*num_list[digit+1,:])
-                ],
-                axis=1,
-            )
-        if digit < self.num_args-2:
-            data = np.concatenate(
-                [
-                    data,
-                    np.full((bs, 1), self.add_token)
-                ],
-                axis=1,
-            )
-    
-    for digit in range(pointer,self.num_args,2):
-        data = np.concatenate(
-                [
-                    data,
-                    self.to_digits(num_list[digit,:]),
-                    np.full((bs,1),self.mult_token),
-                    self.to_digits(num_list[digit+1,:])
-                ],
-                axis=1,
-            )
-        if digit < self.num_args-2:
-            data = np.concatenate(
-                [
-                    data,
-                    np.full((bs, 1), self.add_token)
-                ],
-                axis=1,
-            )
-
-    data = np.concatenate(
-        [
-            data,
-            np.full((bs, 1), self.eos_token)
-        ],
-        axis=1,
-    )
+    for i in range(bs):
+        row = data[i,:]
+        start = np.where(row == -1)[0][0]
+        #print('start: ', start)
+        numbers = num_list[:,i]
+        rhs = []
+        for digit in range(0,self.num_args,2):
+            if digit < pointer: 
+                rhs = rhs + to_digits(numbers[digit]*numbers[digit+1])
+            else: 
+                rhs = rhs + to_digits(numbers[digit]) + [self.mult_token] + to_digits(numbers[digit+1])
+                
+            if digit < self.num_args-2:
+                rhs = rhs + [self.add_token]
+        rhs = rhs + [self.eos_token]
+        row[start:start+len(rhs)] = rhs
+        row[start+len(rhs):] = (len(row) - start - len(rhs))*[self.padding_token]
     return data
