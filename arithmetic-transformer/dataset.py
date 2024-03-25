@@ -3,7 +3,7 @@ import math
 from random import randrange, choice
 import itertools
 import torch
-from data_constructor import innerprod_lhs, innerprod_rhs
+from data_constructor import innerprod_lhs, innerprod_rhs, sum_data, pretty_print
 
 # Adding extra padding is an easy way to improve performance, as it gives the
 # model more space to think. For example, without padding, the standard model
@@ -172,42 +172,54 @@ class InnerProductDataset(Dataset):
 
     def _generate_batch(self, bs):
         #set batch size so that after concatenate we have correct size of data
-        bs = int(bs/2)
-        
+        bs_small = int(bs/2)
+        #print('bs_small: ', bs_small)
         if self.num_args%2 == 1:
             raise ValueError("num_args must be even")
         if self.num_args < 4: 
             raise ValueError('At least four digits required for recursive pemdas')
         
-        print('NUM ARGS: ', self.num_args)
+        #print('NUM ARGS: ', self.num_args)
         
         #First generate list of numbers 
-        num_list = self.make_numbers((self.num_args, bs))
-        print('num_list shape: ', np.shape(num_list))
+        num_list = self.make_numbers((self.num_args, bs_small))
+        #print('num_list shape: ', np.shape(num_list))
         #generate batch function 
         #take RHS of data and copy it to LHS
         
         #TODO: Insert multiplication and add datasets
     
         #construct lhs a*b + c*d
-        data = self.innerprod_lhs(num_list, bs)
+        data = self.innerprod_lhs(num_list, bs_small)
         #construct rhs eval(a*b) + c*d
-        data = self.innerprod_rhs(num_list,bs,data,pointer=2)
+        data = self.innerprod_rhs(num_list,bs_small,data,pointer=2)
         #construct lhs eval(a*b) + c*d copies from rhs
-        data_inter = self.innerprod_lhs(num_list,bs,data=data)
+        data_inter = self.innerprod_lhs(num_list,bs_small,data=data)
         #construct rhs eval(a*b) + eval(c*d) 
-        data_final = self.innerprod_rhs(num_list,bs,data_inter,pointer=4)
+        data_final = self.innerprod_rhs(num_list,bs_small,data_inter,pointer=4)
         #TODO: recursive sum 
         #recursive_sum(num_list)
         
-        #data_sum = self.sum_data(num_list,bs)
+        #length is number of digits in addition
+        #a+b+c = eval(a+b) + c = eval(a+b+c)
+        #TODO: num list is oriented row by column as intuitively
+        #for the data_sum function. Change the orientation in previous functions 
+        num_list = self.make_numbers((bs_small, self.num_args), number_length=1)
+        #print('num_list: ', num_list)
+        data_sum = self.sum_data(num_list)
         #data_mult = self.mult_data(num_list,bs)
         
         #Consider shuffling data
         #np.random.shuffle(data)
-        print('data: ', data[:4,:])
-        print('data_final: ', data_final[:4,:])
-        data_out = np.concatenate([data,data_final],axis=0)
+        #print('data: ', data[:4,:])
+        #print('data_final: ', data_final[:4,:])
+        #print('data sum: ', data_sum[:4,:])
+        self.pretty_print(data[:4,:])
+        self.pretty_print(data_final[:4,:])
+        self.pretty_print(data_sum[:4,:])
+        data_out = np.concatenate([data,data_final,data_sum],axis=0)
+        np.random.shuffle(data_out)
+        data_out = data_out[:bs,:]
         return data_out
 
     @property
@@ -216,6 +228,8 @@ class InnerProductDataset(Dataset):
 
 InnerProductDataset.innerprod_lhs = innerprod_lhs 
 InnerProductDataset.innerprod_rhs = innerprod_rhs 
+InnerProductDataset.sum_data = sum_data
+InnerProductDataset.pretty_print = pretty_print
 
 class PemdasDataset(Dataset):
     def __init__(

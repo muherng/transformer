@@ -283,9 +283,11 @@ def manual_training(model, dataset, args):
     time_to_success = Counter()
     for epoch in range(args.epochs):
         train_batches = args.train_batches
+        #TODO: UNCOMMENT WHEN NEEDED
         #train_batches = 2
         with torch.no_grad():
             np_data = dataset.generate_batch(batch_size * train_batches)
+            #np_data = dataset.generate_batch(8)
             train_data = torch.tensor(np_data).to(device)
             #print('data size: ', train_data.size())
             #print('train_batches: ', train_batches)
