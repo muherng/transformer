@@ -220,18 +220,7 @@ def training_step(model, batch):
     #model takes input dim to dim
     #but it's predicting only the last dim-1   
     truth = batch[:, 1:]
-    #print('batch size: ', batch.size())
-    #print('batch: ', batch[:2,:])
-    #start a + b = c end
-    #model(input) = [unknown + b = c end nonsense]
-    #out = [unknown + b = c end]
     out = model(batch)[:, :-1]
-    #print('mask size: ', mask.size())
-    #print('mask: ', mask[:2,:])
-    #print('model(batch): ', model(batch).size())
-    #print('out size: ', out.size())
-    #print('out[mask]: ', out[mask].size())
-    #print('truth[mask]: ', truth[mask].size())
     return F.cross_entropy(out[mask], truth[mask])
 
 
@@ -241,7 +230,6 @@ def validation_step(model, batch):
     including the padding."""
     mask = answer_mask(model.ds, batch)
     truth = batch[:, 1:]
-    #print('val batch: ', batch[:2,:]) 
     out = model(batch)[:, :-1]
     preds = torch.argmax(out, dim=2)
 
@@ -264,6 +252,35 @@ def validation_step(model, batch):
             
     return torch.all(preds * mask == truth * mask, dim=1).float().mean()
 
+
+def curriculum_training(model,dataset,args):
+    
+    #pretrain 
+    #training on addition up to 6 digits
+    #multiplication up to 6 digits
+    #recursive sum (no recursive mult)\
+    #subtraction    
+
+    #inner product -> 
+    #write function that takes inner product of any two vectors into entire data sequence
+    #write this function first?  
+    
+    #if then else? 
+    
+    #variable update?  
+    
+    #line of code "if <w,x> + b > 0 then w = w + \eta \grad else w else ... 
+    #convert to sequence 
+    #decide on svm 
+    
+    #subtraction? 
+    #variables w = (w_1,w_2,...,w_d)
+    #if <w,x> > 0 then else
+    #<w,x> solve sequence 
+    #decide on branch (then->line of code,else->line of code) 
+    
+    #var w = (...) next var x = (....) next <w,x> = (...)
+    return 0
 
 def manual_training(model, dataset, args):
     if args.device is not None:

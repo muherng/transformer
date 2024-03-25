@@ -10,7 +10,6 @@ def num_to_digits(number):
 
 def innerprod_lhs(self,num_list, bs, data=None):
     #first add start token 
-
     if data is not None:
         #fill with -1's in the shape of data
         data_new = np.full(np.shape(data),-1)
@@ -76,7 +75,6 @@ def innerprod_rhs(self,num_list,bs,data,pointer=0,lhs=False):
 #It should be general summing.  or both? 
 #for now general summing up to two digits
 def sum_data(self,num_list):
-    #print('in data sum')
     bs,num_args = np.shape(num_list)
     if num_args == 1:
         raise ValueError('num_args must be bigger than 1')
@@ -92,7 +90,7 @@ def sum_data(self,num_list):
                 row = row + num_to_digits(numbers[digit]) + [self.add_token]
             #remove final add token
             row = row[:-1]
-            #add = token
+            #append "=" token
             row = row + [self.end_token]
             #add first two numbers 
             row = row + num_to_digits(numbers[0] + numbers[1]) + [self.add_token]
@@ -101,10 +99,6 @@ def sum_data(self,num_list):
             row = row[:-1]
             row = row + [self.eos_token]
             row = row + (length - len(row))*[self.padding_token]
-            #print('row: ', row)
-            #print('number length: ', self.number_length)
-            #print('numbers: ', numbers)
-            #print('i: ', i)
             data_new[i,:] = row
         if outer_loop == 0: 
             data = data_new 

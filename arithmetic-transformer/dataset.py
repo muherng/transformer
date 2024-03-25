@@ -33,27 +33,17 @@ class Dataset:
         self.dic[self.end_token] = "="
         self.dic[self.eos_token] = ""
 
-    def make_numbers(self, shape, number_length=None):
+    def make_numbers(self, shape, number_length=None, low=None, high=None):
         if number_length is None:
             number_length = self.number_length
-        if np.dtype(self.preferred_dtype) is np.dtype(object):
-            powers = [self.base**(i+1) for i in range(number_length)]
-            n = math.prod(shape)
-            result = np.array([randrange(choice(powers)) for i in range(n)],
-                              dtype=object).reshape(shape)
-        else:
-            digits_shape = shape + (number_length,)
-            digits = np.random.randint(0, self.base, math.prod(digits_shape)).reshape(digits_shape)
-            n_digits = np.random.randint(0, number_length, shape)
-            mask = np.arange(number_length) < n_digits[..., None]
-            exponents = np.arange(number_length - 1, -1, -1, dtype=self.preferred_dtype)
-            bases = np.expand_dims(np.power(self.base, exponents), 0)
-            result = (digits * bases).sum(axis=-1)
-        return result
+        if low == None:
+            low = -10**number_length
+        if high=None: 
+            high = 10**number_length
+        return np.random.randint(low,high,shape)
 
     def to_digits(self, numbers, length=None):
         if length is None:
-            #length = self.number_length
             #this line is buggy TODO: fix
             length = max([len(str(num)) for num in numbers]) 
 
@@ -137,6 +127,85 @@ class Dataset:
         assert False, "Not implemented"
 
 
+class BasicOpDataset(Dataset):
+    #number of args, number of digits, add/minus/mixed
+    def __init__(
+        self,
+        number_length,
+        base=10,
+        num_args=4,
+        pre_end_padding=0,
+        min_b=0,
+        flip=False,
+        **kwargs,
+    ):
+        super().__init__(base, number_length, pre_end_padding, flip, **kwargs)
+
+
+        self.dic[base+4] = '+'
+        self.dic[base+5] = '*'
+        self.dict[base+6] = '-'
+        self.min_b = min_b
+
+        self.start_token = base  # Before input
+        self.end_token = base + 1  # After input
+        #self.separator_token = base + 2
+        self.padding_token = base + 2  # Before input and after target
+        self.eos_token = base + 3  # After target
+
+        self.add_token = base + 4  # between inputs add token
+        self.mult_token = base + 5 
+        self.minus_token = base + 6
+        self.n_tokens = base + 7
+        
+        self.num_args = num_args
+
+    def _generate_batch(self, bs, mode='add'):
+        #mode = {'add','minus', 'add-minus','mult'}
+        #'add' every number is positive
+        #'minus' every number is negative 
+        #'add-minus' numbers can be pos or neg
+        #'mult' ought to only ever take two args 
+        #'mult' should be trained on general add/minus 
+        
+        #consistency: each class creates single type of dataset 
+        #batch size entirely set by curriculum
+        #number of tokens and token dictionary 
+        
+        if mode == 'mult' and self.num_args > 2:
+            raise NotImplemented('multiplication of more than two numbers not yet implemented')
+        
+        #Question: Need to fix n_tokens beforehand for pretraining to be meaningful
+        #for now just deal with subtraction 
+        
+        #set batch size so that after concatenate we have correct size of data
+        if self.num_args%2 == 1:
+            raise ValueError("num_args must be even")
+        
+        #length is number of digits 
+        #a+b+c = eval(a+b) + c = eval(a+b+c)
+        #TODO: num list is oriented row by column as intuitively
+        #for the data_sum function. Change the orientation in previous functions 
+        
+        if mode in ['add','minus','add-minus'] : 
+            num_list = self.make_numbers((bs, self.num_args), number_length=1)
+            data = self.sum_data(num_list,mode=mode)
+        if mode == 'mult':
+            
+        
+        self.pretty_print(data[:4,:])
+        np.random.shuffle(data)
+        data = data[:bs,:]
+        return data
+
+    @property
+    def seq(self):
+        return 4*self.number_length * self.num_args 
+    
+
+class MultDataset(Dataset):
+    #pretraining vs. just putting it all in?
+    
         
 class InnerProductDataset(Dataset):
     def __init__(
@@ -151,11 +220,10 @@ class InnerProductDataset(Dataset):
     ):
         super().__init__(base, number_length, pre_end_padding, flip, **kwargs)
 
-        #self.sep_string = sep
-        #self.out_length = out_length
-        #self.dic[self.separator_token] = sep
+
         self.dic[base+4] = '+'
         self.dic[base+5] = '*'
+        self.dict[base+6] = '-'
         self.min_b = min_b
 
         self.start_token = base  # Before input
@@ -165,8 +233,9 @@ class InnerProductDataset(Dataset):
         self.eos_token = base + 3  # After target
 
         self.add_token = base + 4  # between inputs add token
-        self.mult_token = base + 5
-        self.n_tokens = base + 6
+        self.mult_token = base + 5 
+        self.minus_token = base + 6
+        self.n_tokens = base + 7
         
         self.num_args = num_args
 
@@ -230,509 +299,3 @@ InnerProductDataset.innerprod_lhs = innerprod_lhs
 InnerProductDataset.innerprod_rhs = innerprod_rhs 
 InnerProductDataset.sum_data = sum_data
 InnerProductDataset.pretty_print = pretty_print
-
-class PemdasDataset(Dataset):
-    def __init__(
-        self,
-        base,
-        number_length,
-        num_args,
-        out_length,
-        pre_end_padding=0,
-        min_b=0,
-        flip=False,
-        **kwargs,
-    ):
-        super().__init__(base, number_length, pre_end_padding, flip, **kwargs)
-
-        #self.sep_string = sep
-        self.out_length = out_length
-        #self.dic[self.separator_token] = sep
-        self.dic[base+4] = '+'
-        self.dic[base+5] = '*'
-        self.min_b = min_b
-
-        self.start_token = base  # Before input
-        self.end_token = base + 1  # After input
-        #self.separator_token = base + 2
-        self.padding_token = base + 2  # Before input and after target
-        self.eos_token = base + 3  # After target
-
-        self.add_token = base + 4  # between inputs add token
-        self.mult_token = base + 5
-        self.n_tokens = base + 6
-        
-        self.num_args = num_args
-
-    def _generate_batch(self, bs):
-        if self.num_args%2 == 1:
-            raise ValueError("num_args must be even")
-        #TODO: change this to what is needed for 
-        num_list = self.make_numbers((self.num_args, bs))
-        print('num_list: ', num_list)
-        print('num_list: ', np.shape(num_list))
-        
-        #TODO: change separator token 
-        data = np.full((bs,1), self.start_token)
-        
-        #setup data left of equal sign 
-        #append digit then + for all but the last digit
-        if self.num_args < 4: 
-            raise ValueError('At least four digits required for pemdas')
-        
-        for digit in range(0,self.num_args-1,2):
-            data = np.concatenate(
-                [
-                    data,
-                    self.to_digits(num_list[digit,:]),
-                    np.full((bs,1),self.mult_token),
-                    self.to_digits(num_list[digit+1,:]),
-                ],
-                axis=1,
-            )
-            
-            if digit < self.num_args - 2:
-                data = np.concatenate(
-                    [
-                        data,
-                        np.full((bs,1),self.add_token)
-                    ],
-                    axis=1
-                )
-                
-        #add last digit with = token
-        data = np.concatenate(
-                [
-                    data,
-                    np.full((bs, 1), self.end_token)
-                ],
-                axis=1,
-            )
-
-        #add output sum of first two digits
-        if self.num_args >= 4:
-            for digit in range(1,self.num_args):
-                if digit == 1: 
-                    data = np.concatenate(
-                        [
-                            data,
-                            self.to_digits(num_list[0,:]*num_list[1,:])
-                        ],
-                        axis=1,
-                    )
-                else: 
-                    data = np.concatenate(
-                        [
-                            data,
-                            self.to_digits(num_list[digit,:])
-                        ],
-                        axis=1,
-                    )
-                    
-                if digit < self.num_args-1:
-                    data = np.concatenate(
-                        [
-                            data,
-                            np.full((bs, 1), self.add_token)
-                        ],
-                        axis=1,
-                    )
-                
-            data = np.concatenate(
-                [
-                    data,
-                    np.full((bs, 1), self.eos_token)
-                ],
-                axis=1,
-            )
-            
-        
-        np.random.shuffle(data)
-        return data
-
-    @property
-    def seq(self):
-        return self.number_length * 2 + self.out_length + 4
-    
-class RecursiveAddDataset(Dataset):
-    def __init__(
-        self,
-        base,
-        number_length,
-        num_args,
-        out_length,
-        pre_end_padding=0,
-        min_b=0,
-        flip=False,
-        **kwargs,
-    ):
-        super().__init__(base, number_length, pre_end_padding, flip, **kwargs)
-
-        #self.sep_string = sep
-        self.out_length = out_length
-        #self.dic[self.separator_token] = sep
-        self.dic[base+4] = '+'
-        self.min_b = min_b
-
-        self.start_token = base  # Before input
-        self.end_token = base + 1  # After input
-        #self.separator_token = base + 2
-        self.padding_token = base + 2  # Before input and after target
-        self.eos_token = base + 3  # After target
-
-        self.add_token = base + 4  # between inputs add token
-        self.n_tokens = base + 5
-        
-        self.num_args = num_args
-
-    def _generate_batch(self, bs):
-
-        #TODO: change this to what is needed for 
-        num_list = self.make_numbers((self.num_args, bs))
-        print('num_list: ', num_list)
-        print('num_list: ', np.shape(num_list))
-        
-        #b = np.clip(b, self.min_b, None)
-        #out = self.func(a, b)
-        #out = a+b
-        #TODO: change separator token 
-        data = np.full((bs,1), self.start_token)
-        
-        #setup data left of equal sign 
-        #append digit then + for all but the last digit
-        if self.num_args < 2: 
-            raise ValueError('At least two digits required for sum')
-        
-        for digit in range(self.num_args-1):
-            #possibly transpose num_list
-            data = np.concatenate(
-                [
-                    data,
-                    self.to_digits(num_list[digit,:]),
-                    np.full((bs, 1), self.add_token)
-                ],
-                axis=1,
-            )
-        #add last digit with = token
-        data = np.concatenate(
-                [
-                    data,
-                    self.to_digits(num_list[self.num_args-1,:]),
-                    np.full((bs, 1), self.end_token)
-                ],
-                axis=1,
-            )
-        #add output sum of first two digits
-        if self.num_args >= 3:
-            for digit in range(1,self.num_args):
-                if digit == 1: 
-                    data = np.concatenate(
-                        [
-                            data,
-                            self.to_digits(num_list[0,:] + num_list[1,:])
-                        ],
-                        axis=1,
-                    )
-                else: 
-                    data = np.concatenate(
-                        [
-                            data,
-                            self.to_digits(num_list[digit,:])
-                        ],
-                        axis=1,
-                    )
-                    
-                if digit < self.num_args-1:
-                    data = np.concatenate(
-                        [
-                            data,
-                            np.full((bs, 1), self.add_token)
-                        ],
-                        axis=1,
-                    )
-                
-            data = np.concatenate(
-                [
-                    data,
-                    np.full((bs, 1), self.eos_token)
-                ],
-                axis=1,
-            )
-            
-        np.random.shuffle(data)
-        return data
-
-    @property
-    def seq(self):
-        return self.number_length * 2 + self.out_length + 4
-
-class AddMultDataset(Dataset):
-    def __init__(
-        self,
-        base,
-        number_length,
-        out_length,
-        pre_end_padding=0,
-        min_b=0,
-        flip=False,
-        **kwargs,
-    ):
-        super().__init__(base, number_length, pre_end_padding, flip, **kwargs)
-
-        #self.sep_string = sep
-        self.out_length = out_length
-        #self.dic[self.separator_token] = sep
-        self.dic[base+4] = '+'
-        self.dic[base+5] = '*'
-        self.min_b = min_b
-
-        self.start_token = base  # Before input
-        self.end_token = base + 1  # After input
-        #self.separator_token = base + 2
-        self.padding_token = base + 2  # Before input and after target
-        self.eos_token = base + 3  # After target
-
-        self.add_token = base + 4  # between inputs add token
-        self.mult_token = base + 5  #between inputs mult token
-        self.n_tokens = base + 6
-
-    def _generate_batch(self, bs):
-        
-        if bs%2 == 0: 
-            bs_add = int(bs/2)
-            bs_mult = int(bs/2)
-        else: 
-            bs_add = int(bs/2)
-            bs_mult = int(bs/2) + 1
-
-        #TODO: change this to what is needed for 
-        a_add, b_add = self.make_numbers((2, bs_add))
-        b_add = np.clip(b_add, self.min_b, None)
-
-        a_mult = np.copy(a_add)[:bs_mult]
-        b_mult = np.copy(b_add)[:bs_mult]
-        #out = self.func(a, b)
-        out_add = a_add+b_add
-        out_mult = a_mult*b_mult
-        #TODO: change separator token 
-        data_add = np.concatenate(
-            [
-                np.full((bs_add, 1), self.start_token),
-                self.to_digits(a_add),
-                np.full((bs_add, 1), self.add_token),
-                self.to_digits(b_add),
-                np.full((bs_add, 1), self.end_token),
-                self.to_digits(out_add, length=self.out_length),
-                np.full((bs_add, 1), self.eos_token),
-            ],
-            axis=1,
-        )
-        data_mult = np.concatenate(
-            [
-                np.full((bs_mult, 1), self.start_token),
-                self.to_digits(a_mult),
-                np.full((bs_mult, 1), self.mult_token),
-                self.to_digits(b_mult),
-                np.full((bs_mult, 1), self.end_token),
-                self.to_digits(out_mult, length=self.out_length),
-                np.full((bs_mult, 1), self.eos_token),
-            ],
-            axis=1,
-        )
-        concat = np.concatenate((data_add,data_mult),axis=0)
-        np.random.shuffle(concat)
-        return concat
-
-    @property
-    def seq(self):
-        return self.number_length * 2 + self.out_length + 4
-
-class BinaryOpDataset(Dataset):
-    def __init__(
-        self,
-        base,
-        number_length,
-        func,
-        sep,
-        out_length,
-        pre_end_padding=0,
-        min_b=0,
-        flip=False,
-        **kwargs,
-    ):
-        super().__init__(base, number_length, pre_end_padding, flip, **kwargs)
-        self.func = func
-        self.sep_string = sep
-        self.out_length = out_length
-        self.dic[self.separator_token] = sep
-        self.min_b = min_b
-
-    def _generate_batch(self, bs):
-        a, b = self.make_numbers((2, bs))
-        b = np.clip(b, self.min_b, None)
-        out = self.func(a, b)
-        return np.concatenate(
-            [
-                np.full((bs, 1), self.start_token),
-                self.to_digits(a),
-                np.full((bs, 1), self.separator_token),
-                self.to_digits(b),
-                np.full((bs, 1), self.end_token),
-                self.to_digits(out, length=self.out_length),
-                np.full((bs, 1), self.eos_token),
-            ],
-            axis=1,
-        )
-
-    @property
-    def seq(self):
-        return self.number_length * 2 + self.out_length + 4
-
-
-class DivModDataset(Dataset):
-    def __init__(
-        self,
-        base,
-        number_length,
-        pre_end_padding=0,
-        flip=False,
-        **kwargs,
-    ):
-        super().__init__(base, number_length, pre_end_padding, flip, **kwargs)
-        self.output_separator = self.n_tokens
-        self.n_tokens += 1
-        self.dic[self.separator_token] = "/%"
-        self.dic[self.output_separator] = ","
-
-    def _generate_batch(self, bs):
-        a, b = self.make_numbers((2, bs), self.base)
-        b = np.clip(b, 1, None)
-        div = a // b
-        mod = a % b
-        return np.concatenate(
-            [
-                np.full((bs, 1), self.start_token),
-                self.to_digits(a),
-                np.full((bs, 1), self.separator_token),
-                self.to_digits(b),
-                np.full((bs, 1), self.end_token),
-                self.to_digits(div),
-                np.full((bs, 1), self.output_separator),
-                self.to_digits(mod),
-                np.full((bs, 1), self.eos_token),
-            ],
-            axis=1,
-        )
-
-    @property
-    def seq(self):
-        return self.number_length * 4 + 5
-
-
-class FactorDataset(Dataset):
-    def __init__(self, base, number_length, pre_end_padding=0, flip=False, **kwargs):
-        super().__init__(base, number_length, pre_end_padding, flip, **kwargs)
-        self.dic[self.separator_token] = "*"
-        self.primes = None
-        self.primes_length = 0
-
-    def get_primes(self, number_length):
-        if self.primes_length == number_length:
-            return self.primes
-        n = self.base**self.number_length
-        sieve = np.ones(n, dtype=bool)
-        # We include 1, but not 0
-        sieve[0] = False
-        for i in range(2, n):
-            if sieve[i]:
-                sieve[i * i :: i] = False
-        self.primes = np.squeeze(np.nonzero(sieve))
-        self.primes_length = self.number_length
-        return self.primes
-
-    @property
-    def max_factors(self):
-        return int(math.log2(self.base) * self.number_length)
-
-    @property
-    def seq(self):
-        # task is "length", answer is longest if all factors are 2.
-        # finally 3 extra tokens: start, end and eos.
-        # actually one less, because we need one separator less than factors
-        return self.number_length + 2 * self.max_factors + 2
-
-    def _generate_batch(self, bs):
-        primes = self.get_primes(self.number_length)
-        # A random number contains the factor p with probability 1/p
-        weights = 1 / primes
-        num_samples = bs * self.max_factors
-        sampled_primes = random.choices(primes, weights=weights, k=num_samples)
-        sampled_primes = np.array(sampled_primes, dtype=self.preferred_dtype)
-        sampled_primes = np.reshape(sampled_primes, (bs, self.max_factors))
-        # Products may be too large. Let's fix that
-        while True:
-            log_prods = np.sum(np.log(sampled_primes.astype(float)), axis=1)
-            mask = log_prods > math.log(self.base) * self.number_length
-            num_too_large = mask.sum().item()
-            if num_too_large == 0:
-                break
-            # Update the first non-one value in the rows that are too large
-            non_one_indices = (sampled_primes != 1).astype(int)
-            first_non_one_mask = (
-                np.cumsum(non_one_indices, axis=1) == 1
-            ) & np.expand_dims(mask, -1)
-            sampled_primes[first_non_one_mask] = 1
-
-        filtered_primes = sampled_primes
-        prods = np.prod(filtered_primes, axis=1)
-        filtered_primes = np.sort(filtered_primes, axis=1)
-        parts = [
-            np.full((bs, 1), self.start_token),
-            self.to_digits(prods),
-            np.full((bs, 1), self.end_token),
-        ]
-        for i in range(self.max_factors):
-            parts += [
-                self.to_digits(filtered_primes[:, i]),
-                np.full((bs, 1), self.separator_token),
-            ]
-            # If 1, change it to padding
-            parts[-2][filtered_primes[:, i] == 1] = self.padding_token
-            parts[-1][filtered_primes[:, i] == 1] = self.padding_token
-        # Replace last separator with EOS
-        parts[-1] = np.full((bs, 1), self.eos_token)
-        res = np.concatenate(parts, axis=1)
-        res = self.move_padding_to_end(res)
-        res = res[:, : self.seq]
-        return res
-    
-class AddModDataset(Dataset):
-    def __init__(self, base, number_length, pre_end_padding=0, flip=False, **kwargs):
-        super().__init__(base, number_length, pre_end_padding, flip, **kwargs)
-        self.separator_token2 = self.n_tokens
-        self.n_tokens += 1
-        self.dic[self.separator_token] = "+"
-        self.dic[self.separator_token2] = "%"
-
-    def _generate_batch(self, bs):
-        a, b = self.make_numbers((2, bs))
-        c = self.make_numbers((bs,), (self.number_length + 1) // 2)
-        out = (a + b) % np.clip(c, 1, None)
-        return np.concatenate(
-            [
-                np.full((bs, 1), self.start_token),
-                self.to_digits(a),
-                np.full((bs, 1), self.separator_token),
-                self.to_digits(b),
-                np.full((bs, 1), self.separator_token2),
-                self.to_digits(c),
-                np.full((bs, 1), self.end_token),
-                self.to_digits(out),
-                np.full((bs, 1), self.eos_token),
-            ],
-            axis=1,
-        )
-
-    @property
-    def seq(self):
-        return self.number_length * 4 + 5
