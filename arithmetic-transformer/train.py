@@ -199,6 +199,11 @@ def make_dataset(args, number_length=1):
         return my_datasets.InnerProductDataset(
             **kvargs
         )
+    elif args.op == "basicop":
+        args.r = 4
+        return my_datasets.BasicOpDataset(
+            **kvargs
+        )
 
 
 def answer_mask(dataset, batch):
@@ -303,11 +308,9 @@ def manual_training(model, dataset, args):
         #TODO: UNCOMMENT WHEN NEEDED
         #train_batches = 2
         with torch.no_grad():
-            np_data = dataset.generate_batch(batch_size * train_batches)
-            #np_data = dataset.generate_batch(8)
+            #np_data = dataset.generate_batch(batch_size * train_batches)
+            np_data = dataset.generate_batch(8,mode='minus')
             train_data = torch.tensor(np_data).to(device)
-            #print('data size: ', train_data.size())
-            #print('train_batches: ', train_batches)
 
         # Training Loop
         model.train()

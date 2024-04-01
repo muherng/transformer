@@ -4,9 +4,62 @@ import math
 from random import randrange, choice
 import itertools
 
+#this function recursively creates 
+#lhs then rhs according to pemdas
+def gen_data(self,expr_type,params): 
+    #many if statements to catch all cases
+    if expr_type == 'arithmetic': 
+        num_list,op_list = params[expr_type]
+        while np.shape(num_list)[1] > 1: 
+            lhs = self.gen_lhs(num_list,op_list)
+            print('lhs: ', lhs)
+            rhs = self.gen_rhs(num_list,op_list)
+            num_list,op_list = self.update(num_list,op_list)
+            data = self.combine(lhs,rhs)
+    else: 
+        raise NotImplementedError
+            
+    return data
+
+def gen_lhs(self,num_list,op_list):
+    #length depends on operations, we can make it longer than it ought to be 
+    #number of digits + 1 operator token * number of arguments * 2 for both lhs and rhs 
+    #plus start, equals, and eos tokens
+    length =  2*(self.number_length + 1)*self.num_args + 3 
+    #obtain longest number of digits in num_list
+    row,col = np.shape(num_list)
+    data = np.zeros((row,length))
+    for i in range(row):
+        numbers = num_list[i,:]
+        row = [self.start_token]
+        for digit in range(len(numbers)):
+            row = row + self.num_to_digits(numbers[digit]) + [self.add_token]
+        #remove final add token
+        row = row[:-1]
+        #append "=" token
+        row = row + [self.end_token]
+        row = row + (length - len(row))*[self.padding_token]
+        data[i,:] = row
+    return data
+
+def gen_rhs(self,num_list, op_list):
+    raise NotImplementedError
+    
+def update(self,num_list,op_list):
+    raise NotImplementedError
+
+def combine(self,lhs,rhs):
+    raise NotImplementedError 
+
 #takes a string and return a list of ints 
-def num_to_digits(number):
-    return [int(num) for num in list(str(number))]
+def num_to_digits(self,number):
+    out = []
+    for num in list(str(number)):
+        if num == '-':
+            out.append(self.minus_token)
+        else: 
+            out.append(int(num))
+    return out
 
 def innerprod_lhs(self,num_list, bs, data=None):
     #first add start token 
@@ -39,7 +92,7 @@ def innerprod_lhs(self,num_list, bs, data=None):
         row = [self.start_token]
         for digit in range(0,self.num_args,2):
             #print('to_digits: ', str_to_int(numbers[digit]))
-            row = row + num_to_digits(numbers[digit]) + [self.mult_token] + num_to_digits(numbers[digit+1])
+            row = row + self.num_to_digits(numbers[digit]) + [self.mult_token] + self.num_to_digits(numbers[digit+1])
             if digit < self.num_args - 2:
                 row = row + [self.add_token]
         row = row + [self.end_token]
@@ -60,9 +113,9 @@ def innerprod_rhs(self,num_list,bs,data,pointer=0,lhs=False):
         rhs = []
         for digit in range(0,self.num_args,2):
             if digit < pointer: 
-                rhs = rhs + num_to_digits(numbers[digit]*numbers[digit+1])
+                rhs = rhs + self.num_to_digits(numbers[digit]*numbers[digit+1])
             else: 
-                rhs = rhs + num_to_digits(numbers[digit]) + [self.mult_token] + num_to_digits(numbers[digit+1])
+                rhs = rhs + self.num_to_digits(numbers[digit]) + [self.mult_token] + self.num_to_digits(numbers[digit+1])
                 
             if digit < self.num_args-2:
                 rhs = rhs + [self.add_token]
@@ -87,15 +140,15 @@ def sum_data(self,num_list):
             numbers = num_list[i,:]
             row = [self.start_token]
             for digit in range(len(numbers)):
-                row = row + num_to_digits(numbers[digit]) + [self.add_token]
+                row = row + self.num_to_digits(numbers[digit]) + [self.add_token]
             #remove final add token
             row = row[:-1]
             #append "=" token
             row = row + [self.end_token]
             #add first two numbers 
-            row = row + num_to_digits(numbers[0] + numbers[1]) + [self.add_token]
+            row = row + self.num_to_digits(numbers[0] + numbers[1]) + [self.add_token]
             for digit in range(2,len(numbers)):
-                row = row + num_to_digits(numbers[digit]) + [self.add_token]
+                row = row + self.num_to_digits(numbers[digit]) + [self.add_token]
             row = row[:-1]
             row = row + [self.eos_token]
             row = row + (length - len(row))*[self.padding_token]

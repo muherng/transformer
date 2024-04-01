@@ -3,7 +3,8 @@ import math
 from random import randrange, choice
 import itertools
 import torch
-from data_constructor import innerprod_lhs, innerprod_rhs, sum_data, pretty_print
+from data_constructor import *
+#innerprod_lhs, innerprod_rhs, sum_data, pretty_print, gen_data
 
 # Adding extra padding is an easy way to improve performance, as it gives the
 # model more space to think. For example, without padding, the standard model
@@ -38,9 +39,100 @@ class Dataset:
             number_length = self.number_length
         if low == None:
             low = -10**number_length
-        if high=None: 
+        if high==None: 
             high = 10**number_length
         return np.random.randint(low,high,shape)
+    
+    def make_op(self, shape, mode='add'):
+        row,col = shape
+        #operation is tuple (op,position)
+        #alternative: formulate the entire sequence 
+        #then translate it into tokens 
+        #to_token function
+        #one_step_evaluate function
+        #but we still need make_op
+        #there will be a sequence of numbers and operations 
+        #the interpreter function will take care of parsing everything
+        #add would have a different shape than minus--weird???
+        #add and mult would have same shape
+        #add-minus can start with add 
+        #then the interpreter must figure out what the first step is?
+        #do you perform an addition operation? It's a little ambiguous 
+        #there is an operation in front of every number
+        #mult addition in front of first number? No, first number no addition
+        #same as start with zero, first step is to drop addition in front of first number
+        
+        #hard rule: do it the way people do it
+        if mode == 'add':
+            #no addition in front of first token
+            op_list = self.add_token*np.ones((row,col-1))
+            pos_list = np.zeros((row,col-1))
+            for i in range(row):
+                pos_list[i,:] = 2*np.arange(1,col,dtype=int)
+        elif mode == 'minus': 
+            op_list = self.minus_token*np.ones(shape)
+            pos_list = np.zeros(shape) 
+            for i in range(row):
+                pos_list[i,:] = 2*np.arange(0,col,dtype=int)
+        elif mode == 'add-minus':
+            #add minus will the not be consistent in its size? 
+            #that's not ideal, 
+            op_list = np.random.choice([True,False],size=shape)
+            op_list = np.where(op_list, self.add_token, self.minus_token)
+            pos_list = np.zeros(shape)
+            for i in range(row):
+                if op_list[i,0] == self.add_token:
+                    pos_list[i,:col-1] = 2*np.arange(1,col,dtype=int)
+                    #pad with -1 at the end
+                    pos_list[i,col] = -1
+                if op_list[i,0] == self.minus_token:
+                    bit = np.random.binomial(1,0.5,size=1)
+                    #two possibilities: - a or a - 
+                    if bit: 
+                        pos_list[i,:] = 2*np.arange(0,col,dtype=int)
+                    else: 
+                        pos_list[i,:col-1] = 2*np.arange(1,col,dtype=int)
+                        #pad with -1 at the end
+                        pos_list[i,col] = -1               
+        elif mode == 'mult-add':
+            #a * b
+            op_list = self.mult_token*np.ones((row-1,col))
+            pos_list = np.zeros((row,col-1))
+            for i in range(row):
+                pos_list[i,:] = 2*np.arange(1,col,dtype=int)  
+        elif mode == 'mult-minus':
+            #-a * - b * -c = ?
+            #number of operations is 1 + 2*(col-1)
+            num_op = 1 + 2*(col-1)
+            op_list = np.ones((row,num_op))
+            row_to_copy = np.ones(num_op)
+            for i in range(0,len(row_to_copy),2):
+                row_to_copy[i] = self.minus_token
+            for i in range(1,len(row_to_copy),2):
+                row_to_copy[i] = self.mult_token
+            op_list = np.tile(row_to_copy, (row,1))
+            #create positions
+            #0,2,3,5,6 
+            #once all ops and nums are generated
+            #sequence is uniquely determined (not true) 
+            #need one more bit for a - vs. - a 
+            
+            #final clean idea, ops are +,-,* but op_list only include +,*
+            #num_list includes negative numbers
+            #when generating the lhs we condense +- to - 
+            #pos_list is always 1,3,5...
+            #when evaluating lhs simple pemdas 
+            
+            pos_list = np.zeros(np.shape(op_list))
+            
+        elif mode == 'mult-add-minus':
+            raise NotImplementedError
+        elif mode == 'innerprod': 
+            
+        else: 
+            raise ValueError('mode not handled')
+        
+        return (op_list,pos_list)
 
     def to_digits(self, numbers, length=None):
         if length is None:
@@ -61,6 +153,7 @@ class Dataset:
             return np.flip(digits, [1])
         return digits
 
+    #this function is useful in rapidly generating data with np.concat
     def move_padding_to_end(self, tensor, end=True):
         """Move all padding tokens in each row to the end without reordering the rest."""
 
@@ -81,8 +174,8 @@ class Dataset:
 
         return sorted_tensor
 
-    def generate_batch(self, bs):
-        res = self._generate_batch(bs)
+    def generate_batch(self, bs, mode='add'):
+        res = self._generate_batch(bs,mode)
         res = self.move_padding_to_end(res)
 
         # Insert COT padding
@@ -95,8 +188,6 @@ class Dataset:
             # Use scatter to insert values at the correct positions
             expanded_tensor.scatter_(1, positions, res)
             res = expanded_tensor
-
-        # assert res.shape == (bs, self.seq)
         return res
 
     def _generate_batch(self, tokens):
@@ -144,7 +235,7 @@ class BasicOpDataset(Dataset):
 
         self.dic[base+4] = '+'
         self.dic[base+5] = '*'
-        self.dict[base+6] = '-'
+        self.dic[base+6] = '-'
         self.min_b = min_b
 
         self.start_token = base  # Before input
@@ -157,7 +248,10 @@ class BasicOpDataset(Dataset):
         self.mult_token = base + 5 
         self.minus_token = base + 6
         self.n_tokens = base + 7
-        
+        #how to add negative tokens? Token count starts at zero?  
+        #this is annoying 
+        #this choice can come to bite you
+        #minus is a separate operator 
         self.num_args = num_args
 
     def _generate_batch(self, bs, mode='add'):
@@ -172,8 +266,8 @@ class BasicOpDataset(Dataset):
         #batch size entirely set by curriculum
         #number of tokens and token dictionary 
         
-        if mode == 'mult' and self.num_args > 2:
-            raise NotImplemented('multiplication of more than two numbers not yet implemented')
+        #if mode == 'mult' and self.num_args > 2:
+        #    raise NotImplemented('multiplication of more than two numbers not yet implemented')
         
         #Question: Need to fix n_tokens beforehand for pretraining to be meaningful
         #for now just deal with subtraction 
@@ -187,10 +281,40 @@ class BasicOpDataset(Dataset):
         #TODO: num list is oriented row by column as intuitively
         #for the data_sum function. Change the orientation in previous functions 
         
-        if mode in ['add','minus','add-minus'] : 
-            num_list = self.make_numbers((bs, self.num_args), number_length=1)
-            data = self.sum_data(num_list,mode=mode)
+        #low inclusive high exclusive
+        if mode == 'add' : 
+            low = 0
+            high = 10**self.number_length
+        if mode == 'minus':
+            low = -10**self.number_length + 1
+            high = 0
+        if mode == 'add-minus':
+            low = -10**self.number_length + 1
+            high = 10**self.number_length
         if mode == 'mult':
+            low = -10**self.number_length + 1
+            high = 10**self.number_length
+        
+        low = int(low)
+        high = int(high)
+        num_list = self.make_numbers((bs, self.num_args),low=low,high=high)
+        op_list = self.make_op((bs, self.num_args-1),mode=mode)
+        
+        print('num_list: ', num_list[:4,:])
+        print('op_list: ', op_list[:4,:])
+        
+        #mult is different than add
+        #minus is not an operation 
+        #-3 and 3 are two separate tokens so 3 + (-3) = 0.  
+        #mult and plus are the operations between any two numbers 
+        #this would capture inner product in an elegant way
+        #operations array, then scan through operations for pemdas to form rhs 
+        #raise ValueError('done')
+        
+        #params can have dictionary argument "if-then-else" "var substitution etc." 
+        params = {'arithmetic': (num_list, op_list)}
+        expr_type = 'arithmetic'
+        data = self.gen_data(expr_type,params)
             
         
         self.pretty_print(data[:4,:])
@@ -202,10 +326,12 @@ class BasicOpDataset(Dataset):
     def seq(self):
         return 4*self.number_length * self.num_args 
     
-
-class MultDataset(Dataset):
-    #pretraining vs. just putting it all in?
-    
+BasicOpDataset.gen_data = gen_data
+BasicOpDataset.gen_lhs = gen_lhs
+BasicOpDataset.gen_rhs = gen_rhs
+BasicOpDataset.update = update
+BasicOpDataset.combine = combine
+BasicOpDataset.num_to_digits = num_to_digits
         
 class InnerProductDataset(Dataset):
     def __init__(
