@@ -309,7 +309,7 @@ def manual_training(model, dataset, args):
         #train_batches = 2
         with torch.no_grad():
             #np_data = dataset.generate_batch(batch_size * train_batches)
-            np_data = dataset.generate_batch(8,mode='minus')
+            np_data = dataset.generate_batch(8,mode='add',sign='pos')
             train_data = torch.tensor(np_data).to(device)
 
         # Training Loop

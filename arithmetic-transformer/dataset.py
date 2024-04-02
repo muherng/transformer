@@ -53,86 +53,36 @@ class Dataset:
         #but we still need make_op
         #there will be a sequence of numbers and operations 
         #the interpreter function will take care of parsing everything
-        #add would have a different shape than minus--weird???
-        #add and mult would have same shape
-        #add-minus can start with add 
-        #then the interpreter must figure out what the first step is?
-        #do you perform an addition operation? It's a little ambiguous 
-        #there is an operation in front of every number
-        #mult addition in front of first number? No, first number no addition
-        #same as start with zero, first step is to drop addition in front of first number
         
-        #hard rule: do it the way people do it
+        #rule: do it the way people do it
+        #final clean idea, ops are +,-,* but op_list only include +,*
+        #num_list includes negative numbers
+        #when generating the lhs we condense +- to - 
+        #pos_list is always 1,3,5...
+        #when evaluating lhs simple pemdas 
+        print('mode: ', mode)
         if mode == 'add':
             #no addition in front of first token
-            op_list = self.add_token*np.ones((row,col-1))
-            pos_list = np.zeros((row,col-1))
-            for i in range(row):
-                pos_list[i,:] = 2*np.arange(1,col,dtype=int)
-        elif mode == 'minus': 
-            op_list = self.minus_token*np.ones(shape)
-            pos_list = np.zeros(shape) 
-            for i in range(row):
-                pos_list[i,:] = 2*np.arange(0,col,dtype=int)
-        elif mode == 'add-minus':
-            #add minus will the not be consistent in its size? 
-            #that's not ideal, 
-            op_list = np.random.choice([True,False],size=shape)
-            op_list = np.where(op_list, self.add_token, self.minus_token)
-            pos_list = np.zeros(shape)
-            for i in range(row):
-                if op_list[i,0] == self.add_token:
-                    pos_list[i,:col-1] = 2*np.arange(1,col,dtype=int)
-                    #pad with -1 at the end
-                    pos_list[i,col] = -1
-                if op_list[i,0] == self.minus_token:
-                    bit = np.random.binomial(1,0.5,size=1)
-                    #two possibilities: - a or a - 
-                    if bit: 
-                        pos_list[i,:] = 2*np.arange(0,col,dtype=int)
-                    else: 
-                        pos_list[i,:col-1] = 2*np.arange(1,col,dtype=int)
-                        #pad with -1 at the end
-                        pos_list[i,col] = -1               
+            op_list = self.add_token*np.ones((row,col-1)) 
+        elif mode == 'mult': 
+            op_list = self.mult_token*np.ones((row,col-1))
         elif mode == 'mult-add':
-            #a * b
-            op_list = self.mult_token*np.ones((row-1,col))
-            pos_list = np.zeros((row,col-1))
-            for i in range(row):
-                pos_list[i,:] = 2*np.arange(1,col,dtype=int)  
-        elif mode == 'mult-minus':
-            #-a * - b * -c = ?
-            #number of operations is 1 + 2*(col-1)
-            num_op = 1 + 2*(col-1)
-            op_list = np.ones((row,num_op))
-            row_to_copy = np.ones(num_op)
-            for i in range(0,len(row_to_copy),2):
-                row_to_copy[i] = self.minus_token
-            for i in range(1,len(row_to_copy),2):
-                row_to_copy[i] = self.mult_token
-            op_list = np.tile(row_to_copy, (row,1))
-            #create positions
-            #0,2,3,5,6 
-            #once all ops and nums are generated
-            #sequence is uniquely determined (not true) 
-            #need one more bit for a - vs. - a 
-            
-            #final clean idea, ops are +,-,* but op_list only include +,*
-            #num_list includes negative numbers
-            #when generating the lhs we condense +- to - 
-            #pos_list is always 1,3,5...
-            #when evaluating lhs simple pemdas 
-            
-            pos_list = np.zeros(np.shape(op_list))
-            
-        elif mode == 'mult-add-minus':
-            raise NotImplementedError
+            #a * b + c + d
+            op_list = np.random.choice([1,0], size=(row,col-1))
+            op_list = np.where(op_list == 1,self.mult_token,self.add_token) 
         elif mode == 'innerprod': 
-            
+            #a*b + c*d 
+            if col%2 != 0:
+                raise ValueError('inner product must have even number of arguments')
+            op_list = np.zeros(col-1)
+            skip = np.arange(0,col-1,2,dtype=int) 
+            op_list[skip] = 1
+            op_list = np.where(op_list == 1,self.mult_token,self.add_token)
+            op_list = np.tile(op_list,(row,1))
         else: 
             raise ValueError('mode not handled')
         
-        return (op_list,pos_list)
+        return op_list
 
     def to_digits(self, numbers, length=None):
         if length is None:
@@ -174,8 +124,10 @@ class Dataset:
 
         return sorted_tensor
 
-    def generate_batch(self, bs, mode='add'):
-        res = self._generate_batch(bs,mode)
+    def generate_batch(self, bs, **kwargs):
+        mode = kwargs['mode']
+        sign = kwargs['sign']
+        res = self._generate_batch(bs, mode=mode, sign=sign)
         res = self.move_padding_to_end(res)
 
         # Insert COT padding
@@ -187,7 +139,7 @@ class Dataset:
             positions += self.pre_end_padding * (positions >= indices_padding[1].unsqueeze(1))
             # Use scatter to insert values at the correct positions
             expanded_tensor.scatter_(1, positions, res)
-            res = expanded_tensor
+            res = expanded_tensor  
         return res
 
     def _generate_batch(self, tokens):
@@ -254,7 +206,11 @@ class BasicOpDataset(Dataset):
         #minus is a separate operator 
         self.num_args = num_args
 
-    def _generate_batch(self, bs, mode='add'):
+    def _generate_batch(self, bs, mode='add', sign='pos'):
+        mode = 'innerprod'
+        sign = 'pos-neg'
+        
+        print('mode first gen batch: ', mode)
         #mode = {'add','minus', 'add-minus','mult'}
         #'add' every number is positive
         #'minus' every number is negative 
@@ -282,27 +238,31 @@ class BasicOpDataset(Dataset):
         #for the data_sum function. Change the orientation in previous functions 
         
         #low inclusive high exclusive
-        if mode == 'add' : 
+        #two sets of flags 
+        #add, mult, innerprod for the operation between two numbers
+        #pos, neg, pos-neg 
+        if sign == 'pos': 
             low = 0
             high = 10**self.number_length
-        if mode == 'minus':
+        elif sign == 'neg': 
             low = -10**self.number_length + 1
             high = 0
-        if mode == 'add-minus':
+        elif sign == 'pos-neg': 
             low = -10**self.number_length + 1
             high = 10**self.number_length
-        if mode == 'mult':
-            low = -10**self.number_length + 1
-            high = 10**self.number_length
-        
+        else: 
+            raise NotImplemented
+
         low = int(low)
         high = int(high)
         num_list = self.make_numbers((bs, self.num_args),low=low,high=high)
-        op_list = self.make_op((bs, self.num_args-1),mode=mode)
+        print('mode in gen batch: ', mode)
+        op_list = self.make_op((bs, self.num_args),mode=mode)
         
         print('num_list: ', num_list[:4,:])
         print('op_list: ', op_list[:4,:])
         
+        raise ValueError('End of implementation') 
         #mult is different than add
         #minus is not an operation 
         #-3 and 3 are two separate tokens so 3 + (-3) = 0.  
@@ -312,6 +272,7 @@ class BasicOpDataset(Dataset):
         #raise ValueError('done')
         
         #params can have dictionary argument "if-then-else" "var substitution etc." 
+        #TODO: completely not implemented
         params = {'arithmetic': (num_list, op_list)}
         expr_type = 'arithmetic'
         data = self.gen_data(expr_type,params)
