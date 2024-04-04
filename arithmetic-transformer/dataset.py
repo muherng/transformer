@@ -207,8 +207,8 @@ class BasicOpDataset(Dataset):
         self.num_args = num_args
 
     def _generate_batch(self, bs, mode='add', sign='pos'):
-        mode = 'innerprod'
-        sign = 'pos-neg'
+        #ode = 'add'
+        #ign = 'pos-neg'
         
         print('mode first gen batch: ', mode)
         #mode = {'add','minus', 'add-minus','mult'}
@@ -262,7 +262,7 @@ class BasicOpDataset(Dataset):
         print('num_list: ', num_list[:4,:])
         print('op_list: ', op_list[:4,:])
         
-        raise ValueError('End of implementation') 
+        #raise ValueError('End of implementation') 
         #mult is different than add
         #minus is not an operation 
         #-3 and 3 are two separate tokens so 3 + (-3) = 0.  
@@ -276,10 +276,9 @@ class BasicOpDataset(Dataset):
         params = {'arithmetic': (num_list, op_list)}
         expr_type = 'arithmetic'
         data = self.gen_data(expr_type,params)
-            
         
-        self.pretty_print(data[:4,:])
         np.random.shuffle(data)
+        self.pretty_print(data[:4,:])
         data = data[:bs,:]
         return data
 
@@ -293,6 +292,10 @@ BasicOpDataset.gen_rhs = gen_rhs
 BasicOpDataset.update = update
 BasicOpDataset.combine = combine
 BasicOpDataset.num_to_digits = num_to_digits
+BasicOpDataset.one_step = one_step
+BasicOpDataset.gen_equation = gen_equation
+BasicOpDataset.gen_line = gen_line 
+BasicOpDataset.pretty_print = pretty_print
         
 class InnerProductDataset(Dataset):
     def __init__(

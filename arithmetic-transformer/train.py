@@ -97,8 +97,13 @@ def main():
         default=4,
         help="The number of heads/rank in transformer/mlp",
     )
-    parser.add_argument("--r", type=int, default=3)
+    #parser.add_argument("--r", type=int, default=3)
+    #mode = add,mult,innerprod
+    parser.add_argument("--mode", type=str, default='add')
+    #sign = pos, neg, pos-neg
+    parser.add_argument("--sign", type=str, default='pos')
     args = parser.parse_args()
+    print('args: ', args)
 
     dataset = make_dataset(args, number_length=args.initial_number_length)
 
@@ -200,7 +205,7 @@ def make_dataset(args, number_length=1):
             **kvargs
         )
     elif args.op == "basicop":
-        args.r = 4
+        kvargs['num_args'] = 4
         return my_datasets.BasicOpDataset(
             **kvargs
         )
@@ -298,6 +303,9 @@ def manual_training(model, dataset, args):
         device = torch.device("cpu")
     model = model.to(device)
 
+    mode = args.mode
+    print('mode: ', mode)
+    sign = args.sign
     batch_size = args.batch_size
     optimizer = model.configure_optimizers()
 
@@ -308,8 +316,8 @@ def manual_training(model, dataset, args):
         #TODO: UNCOMMENT WHEN NEEDED
         #train_batches = 2
         with torch.no_grad():
-            #np_data = dataset.generate_batch(batch_size * train_batches)
-            np_data = dataset.generate_batch(8,mode='add',sign='pos')
+            np_data = dataset.generate_batch(batch_size * train_batches, mode=mode, sign=sign)
+            #np_data = dataset.generate_batch(8,mode=mode,sign=sign)
             train_data = torch.tensor(np_data).to(device)
 
         # Training Loop
@@ -328,7 +336,7 @@ def manual_training(model, dataset, args):
         model.eval()
         with torch.no_grad():
             val_batches = args.val_batches
-            np_data = dataset.generate_batch(batch_size * train_batches)
+            np_data = dataset.generate_batch(batch_size * train_batches,mode=mode,sign=sign)
             val_data = torch.tensor(np_data).to(device)
 
             for batch_idx in tqdm.tqdm(range(val_batches)):

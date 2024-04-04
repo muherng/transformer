@@ -10,16 +10,114 @@ def gen_data(self,expr_type,params):
     #many if statements to catch all cases
     if expr_type == 'arithmetic': 
         num_list,op_list = params[expr_type]
-        while np.shape(num_list)[1] > 1: 
-            lhs = self.gen_lhs(num_list,op_list)
-            print('lhs: ', lhs)
-            rhs = self.gen_rhs(num_list,op_list)
-            num_list,op_list = self.update(num_list,op_list)
-            data = self.combine(lhs,rhs)
+        if np.where(num_list < 0)[1].size != 0 and np.where(op_list==self.minus_token)[1].size != 0: 
+            raise ValueError('Negative numbers only appear in initialization, operations must all be add')
+        
+        flag = -1
+        while np.shape(num_list)[1] > 1:
+            #creates data lhs and rhs and new num_list,op_list
+            print('nums: ', num_list[0,:])
+            print('ops: ', op_list[0,:])
+            data_new,num_list,op_list = self.gen_equation(num_list,op_list)
+            print('equation: ', data_new[0,:])
+            if flag == -1:
+                data = data_new
+                flag += 1
+            else: 
+                data = np.concatenate([data, data_new], axis=0)
     else: 
         raise NotImplementedError
-            
+    #raise ValueError('STOP')
+    data = data.astype(int)
     return data
+
+def gen_equation(self,num_list,op_list):
+    num_list_rhs, op_list_rhs = self.one_step(num_list, op_list)
+    
+    #number of digits + 1 negative token + 1 operator token * number of arguments * 2 for both lhs and rhs 
+    #plus start, equals, and eos tokens
+    #note that length depends on num_args instead of the cols in num_list
+    length =  2*(self.number_length + 2)*self.num_args + 3 
+    row,col = np.shape(num_list)
+    data = np.zeros((row,length))
+    for i in range(row):
+        num = num_list[i,:]
+        op = op_list[i,:]
+        num_rhs = num_list_rhs[i,:]
+        op_rhs = op_list_rhs[i,:]
+        equation = np.concatenate([[self.start_token], self.gen_line(num, op),
+                                   [self.end_token], self.gen_line(num_rhs, op_rhs), [self.eos_token]]) 
+        pad = np.array([self.padding_token]*(length - len(equation)))
+        data[i,:] = np.concatenate([equation,pad])
+    return data, num_list_rhs, op_list_rhs
+    
+#generates a single line from numbers and operations without start and equal tokens
+def gen_line(self, num, op):
+    out = []
+    for i in range(len(num)):
+        out.extend(self.num_to_digits(num[i]))
+        if i < len(op):
+            out.append(op[i])
+    #change +- to -
+    remove = []
+    for i in range(len(out)-1):
+        if out[i] == self.add_token and out[i+1] == self.minus_token:
+            remove.append(i)
+    out = [elem for it,elem in enumerate(out) if it not in remove]
+    return out 
+        
+    
+
+#function for evaluating the first pemdas operation in num_list and op_list 
+def one_step(self,num_list,op_list):
+    
+    #if there's a multiplication, evaluate it
+    row_op,col_op = np.shape(op_list)
+    row, col_num = np.shape(num_list)
+    if col_op != col_num - 1:
+        raise ValueError('there must be one fewer operation than numbers')
+    if row_op != row:
+        raise ValueError('op_list and num_list must have same number of rows')
+    
+    #new op list will have one fewer operation 
+    op_list_new = np.zeros((row,col_op-1))
+    num_list_new = np.zeros((row, col_num-1))
+    for i in range(row): 
+        op_row = op_list[i,:]
+        num_row = num_list[i,:]
+        if np.where(op_row == self.mult_token)[0].size > 0:
+            first_mult = np.where(op_row == self.mult_token)[0][0]
+            num_list_new[i,:first_mult] = num_row[:first_mult]
+            num_list_new[i,first_mult] = num_row[first_mult]*num_row[first_mult+1]
+            #Note: numpy arrays don't index out of bounds for slicing--weird
+            num_list_new[i,first_mult+1:] = num_row[first_mult+2:]
+            #update operation list
+            op_row = list(op_row)
+            op_row.pop(first_mult)
+            op_list_new[i,:] = op_row
+        else: 
+            #no multiplication, so peform first add
+            first_add = np.where(op_row == self.add_token)[0][0]
+            num_list_new[i,:first_add] = num_row[:first_add]
+            num_list_new[i,first_add] = num_row[first_add] + num_row[first_add+1]
+            num_list_new[i,first_add+1:] = num_row[first_add+2:]
+            op_row = list(op_row)
+            op_row.pop(first_add)
+            op_list_new[i,:] = op_row
+    
+    #TODO: implement add and minus 
+    return (num_list_new, op_list_new)
+
+#takes a string and return a list of ints 
+def num_to_digits(self,number):
+    out = []
+    for num in list(str(int(number))):
+        if num == '-':
+            out.append(self.minus_token)
+        else: 
+            out.append(int(num))
+    return out
+        
 
 def gen_lhs(self,num_list,op_list):
     #length depends on operations, we can make it longer than it ought to be 
@@ -51,16 +149,6 @@ def update(self,num_list,op_list):
 def combine(self,lhs,rhs):
     raise NotImplementedError 
 
-#takes a string and return a list of ints 
-def num_to_digits(self,number):
-    out = []
-    for num in list(str(number)):
-        if num == '-':
-            out.append(self.minus_token)
-        else: 
-            out.append(int(num))
-    return out
-
 def innerprod_lhs(self,num_list, bs, data=None):
     #first add start token 
     if data is not None:
@@ -69,6 +157,8 @@ def innerprod_lhs(self,num_list, bs, data=None):
         data_new[:,0] = np.full(bs, self.start_token)
         for i in range(np.shape(data)[0]):
             row = data[i,:]
+            #TODO: these raise errors are all wrong, np.where returns tuple 
+            #change to np.where()[0]
             if len(np.where(row == self.end_token)) > 1:
                 raise ValueError('More than one equal sign in row')
             if len(np.where(row==self.eos_token)) > 1:
@@ -170,11 +260,11 @@ def sum_data(self,num_list):
 
 def pretty_print(self,data):
     token_dict = {self.start_token:"", self.add_token:"+", 
-                  self.mult_token:"*", self.end_token:"=",
-                  self.eos_token:"", self.padding_token:""}
+                  self.minus_token:"-", self.mult_token:"*", 
+                  self.end_token:"=", self.eos_token:"", self.padding_token:""}
     for row in data: 
         row_obj = row.astype('object')
-        for token in [self.start_token, self.add_token, self.mult_token, self.end_token, self.eos_token, self.padding_token]:
+        for token in [self.start_token, self.add_token, self.minus_token, self.mult_token, self.end_token, self.eos_token, self.padding_token]:
             # Replace every occurrence of a specified integer with 'foo'
             row_obj[row_obj == token] = token_dict[token]
             row_obj = row_obj[row_obj != '']
