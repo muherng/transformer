@@ -16,10 +16,10 @@ def gen_data(self,expr_type,params):
         flag = -1
         while np.shape(num_list)[1] > 1:
             #creates data lhs and rhs and new num_list,op_list
-            print('nums: ', num_list[0,:])
-            print('ops: ', op_list[0,:])
+            #print('nums: ', num_list[0,:])
+            #print('ops: ', op_list[0,:])
             data_new,num_list,op_list = self.gen_equation(num_list,op_list)
-            print('equation: ', data_new[0,:])
+            #print('equation: ', data_new[0,:])
             if flag == -1:
                 data = data_new
                 flag += 1
