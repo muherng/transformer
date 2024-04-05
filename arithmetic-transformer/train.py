@@ -4,6 +4,7 @@ import torch
 import tqdm
 from collections import Counter
 import torch.nn.functional as F
+import numpy as np
 
 import dataset as my_datasets
 from model import AdditionModel
@@ -23,7 +24,7 @@ def main():
         help="Number of examples to generate and train on",
     )
     parser.add_argument("--train-batches", type=int, default=1000)
-    parser.add_argument("--val-batches", type=int, default=1000)
+    parser.add_argument("--val-batches", type=int, default=1)
     parser.add_argument("--lr", type=float, default=1e-3, help="Adam LR")
     parser.add_argument(
         "--acc-next", type=float, default=0.9, help="Accuracy before next level"
@@ -99,14 +100,16 @@ def main():
     )
     #parser.add_argument("--r", type=int, default=3)
     #mode = add,mult,innerprod
-    parser.add_argument("--mode", type=str, default='add')
+    parser.add_argument("--mode", type=str, default='innerprod')
     #sign = pos, neg, pos-neg
-    parser.add_argument("--sign", type=str, default='pos')
+    parser.add_argument("--sign", type=str, default='pos-neg')
+    parser.add_argument("--data", type=bool, default=False)
+    parser.add_argument("--num_args", type=int, default=4)
     args = parser.parse_args()
     print('args: ', args)
 
     dataset = make_dataset(args, number_length=args.initial_number_length)
-
+    
     model = AdditionModel(
         ds=dataset,
         kind=args.kind,
@@ -119,10 +122,33 @@ def main():
     )
     num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"The model has {num_params} parameters")
-
+    
     if args.compile:
         model = torch.compile(model)
-    manual_training(model, dataset, args)
+    
+    np_data = None
+    if args.data == 1:
+        print('GENERATING DATA')
+        batch_size = args.batch_size
+        train_batches = args.train_batches
+        mode = args.mode
+        sign = args.sign
+        np_data = dataset.generate_batch(batch_size * train_batches, mode=mode, sign=sign)
+        size = batch_size * train_batches
+        #np_data = dataset.generate_batch(10, mode=mode, sign=sign)
+        np.save(f'data/{args.op}_{args.mode}_{args.sign}_{args.num_args}_{args.initial_number_length}_{size}.npy', np_data)
+        
+        raise ValueError('Done with Data Generation: End')
+    else:
+        batch_size = args.batch_size
+        train_batches = args.train_batches
+        mode = args.mode
+        sign = args.sign
+        size = batch_size * train_batches
+        file = f'data/{args.op}_{args.mode}_{args.sign}_{args.num_args}_{args.initial_number_length}_{size}.npy'
+        np_data = np.load(file,mmap_mode='r')
+        print('DONE LOADING DATA')
+        manual_training(model, dataset, args, np_data=np_data)
 
 
 def make_dataset(args, number_length=1):
@@ -292,7 +318,7 @@ def curriculum_training(model,dataset,args):
     #var w = (...) next var x = (....) next <w,x> = (...)
     return 0
 
-def manual_training(model, dataset, args):
+def manual_training(model, dataset, args, np_data=None):
     if args.device is not None:
         device = torch.device(args.device)
     elif torch.cuda.is_available():
@@ -311,18 +337,21 @@ def manual_training(model, dataset, args):
 
     # Standard PyTorch Training Loop
     time_to_success = Counter()
+    print('Before epoch')
     for epoch in range(args.epochs):
+        print('epoch: ', epoch)
         train_batches = args.train_batches
         #TODO: UNCOMMENT WHEN NEEDED
         #train_batches = 2
         with torch.no_grad():
-            np_data = dataset.generate_batch(batch_size * train_batches, mode=mode, sign=sign)
-            #np_data = dataset.generate_batch(8,mode=mode,sign=sign)
+            if np_data is None: 
+                np_data = dataset.generate_batch(batch_size * train_batches, mode=mode, sign=sign)
             train_data = torch.tensor(np_data).to(device)
 
         # Training Loop
         model.train()
-        for i in range(10): 
+        for i in range(10):
+            print('iteration: ', i)
             for batch_idx in tqdm.tqdm(range(train_batches)):
                 batch = train_data[batch_idx * batch_size : (batch_idx + 1) * batch_size]
                 #print('batch: ', batch[:10,:])
@@ -336,7 +365,7 @@ def manual_training(model, dataset, args):
         model.eval()
         with torch.no_grad():
             val_batches = args.val_batches
-            np_data = dataset.generate_batch(batch_size * train_batches,mode=mode,sign=sign)
+            np_data = dataset.generate_batch(batch_size * val_batches,mode=mode,sign=sign)
             val_data = torch.tensor(np_data).to(device)
 
             for batch_idx in tqdm.tqdm(range(val_batches)):
