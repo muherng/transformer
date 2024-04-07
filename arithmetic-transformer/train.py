@@ -57,8 +57,8 @@ def main():
     parser.add_argument("--batch-size", type=int, default=2**10, help="Batch size")
     parser.add_argument(
         "--kind",
-        required=True,
         type=str,
+        default='transformer',
         help="The type of neural network to use (lstm, transformer, hybrid)",
     )
     parser.add_argument(
@@ -103,7 +103,7 @@ def main():
     parser.add_argument("--mode", type=str, default='innerprod')
     #sign = pos, neg, pos-neg
     parser.add_argument("--sign", type=str, default='pos-neg')
-    parser.add_argument("--data", type=bool, default=False)
+    parser.add_argument("--generate", type=bool, default=True)
     parser.add_argument("--num_args", type=int, default=4)
     args = parser.parse_args()
     print('args: ', args)
@@ -127,17 +127,21 @@ def main():
         model = torch.compile(model)
     
     np_data = None
-    if args.data == 1:
+    if args.generate:
         print('GENERATING DATA')
         batch_size = args.batch_size
         train_batches = args.train_batches
         mode = args.mode
         sign = args.sign
-        np_data = dataset.generate_batch(batch_size * train_batches, mode=mode, sign=sign)
-        size = batch_size * train_batches
-        #np_data = dataset.generate_batch(10, mode=mode, sign=sign)
-        np.save(f'data/{args.op}_{args.mode}_{args.sign}_{args.num_args}_{args.initial_number_length}_{size}.npy', np_data)
-        
+        for i in range(200,1001):
+            np_data = dataset.generate_batch(batch_size * train_batches, mode=mode, sign=sign)
+            #np_data = dataset.generate_batch(10, mode=mode, sign=sign)
+            size = batch_size * train_batches
+            #np_data = dataset.generate_batch(10, mode=mode, sign=sign)
+            file = f'data/{args.op}_{args.mode}_{args.sign}_{args.num_args}_{args.initial_number_length}_{size}_{i}.npy'
+            print('file: ', file)
+            np.save(file, np_data)
+            
         raise ValueError('Done with Data Generation: End')
     else:
         batch_size = args.batch_size
